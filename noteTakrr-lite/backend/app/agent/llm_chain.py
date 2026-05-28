@@ -37,6 +37,7 @@ Your output MUST include:
 - A brief summary at the end.
 
 Use Markdown formatting for readability.
+Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
 Be thorough but concise — a student should be able to review this before an exam."""
 
 REVIEWER_SYSTEM_PROMPT = """You are NoteTakrr, an expert AI study reviewer.
@@ -57,7 +58,8 @@ Format each Q&A pair like this:
 **Q1: [Question]**
 **A1:** [Detailed answer with explanation]
 
-Use Markdown formatting for readability."""
+Use Markdown formatting for readability.
+Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc²."""
 
 
 # ──────────────────────────────────────────────
@@ -208,3 +210,77 @@ async def generate_summary(text: str, context: Optional[List[Dict]] = None, incl
 
 async def generate_review_questions(text: str, context: Optional[List[Dict]] = None, include_search: bool = False) -> str:
     return await generate_study_material(text, "reviewer", context, include_search)
+
+
+# ──────────────────────────────────────────────
+# CHAT FOLLOW-UP (text-only messages)
+# ──────────────────────────────────────────────
+
+CHAT_SYSTEM_PROMPT = """You are NoteTakrr, an expert AI study assistant.
+You are in a conversation with a student who has previously uploaded notes.
+Your job is to help them with follow-up questions about their material.
+
+You can:
+- Clarify or expand on concepts from the notes
+- Improve or restructure a previously generated summary
+- Generate additional practice questions
+- Explain difficult topics in simpler terms
+- Answer any study-related questions
+
+Always respond helpfully and in Markdown format.
+Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
+
+IMPORTANT: At the end of every response, always ask the student:
+"**Would you like me to add this to the document?**"
+"""
+
+
+async def generate_chat_response(
+    user_message: str,
+    context: Optional[List[Dict]] = None,
+    include_search: bool = False
+) -> str:
+    """Handle follow-up text messages in an existing conversation.
+    
+    Uses the full conversation history so the model knows what notes
+    were discussed previously.
+    """
+    messages = [
+        {"role": "system", "content": CHAT_SYSTEM_PROMPT}
+    ]
+    
+    # Add conversation history so the model has context
+    if context:
+        for msg in context:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+
+    final_prompt = user_message
+
+    if include_search:
+        short_query = user_message[:100].replace('\n', ' ').strip()
+        search_context = await _get_search_context(short_query)
+        final_prompt += f"\n\nHere is some additional live web context:\n{search_context}"
+
+    messages.append({
+        "role": "user",
+        "content": final_prompt
+    })
+
+    client = get_llm_client()
+
+    try:
+        response = await client.chat.completions.create(
+            model="glm-4.7-flash",
+            messages=messages,
+            temperature=0.7,
+        )
+    except Exception as e:
+        raise ValueError(f"Z.ai API call failed: {str(e)}")
+
+    if not response.choices or not response.choices[0].message.content:
+        raise ValueError("Z.ai returned an empty response.")
+        
+    return response.choices[0].message.content

@@ -8,9 +8,17 @@ interface ProcessRequest {
   conversation_id?: string;
 }
 
+interface ChatRequest {
+  message: string;
+  mode: 'summary' | 'reviewer';
+  include_search: boolean;
+  conversation_id?: string;
+}
+
 export function useAgent() {
   const queryClient = useQueryClient();
 
+  // Mutation for file uploads (existing)
   const processMutation = useMutation({
     mutationFn: async ({ file, mode, include_search, conversation_id }: ProcessRequest) => {
       const formData = new FormData();
@@ -27,19 +35,38 @@ export function useAgent() {
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      // Invalidate queries so the sidebar and chat feed update
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    onSuccess: async (data) => {
+      await queryClient.refetchQueries({ queryKey: ['conversations'] });
       if (data.conversation_id) {
-        queryClient.invalidateQueries({ queryKey: ['messages', data.conversation_id] });
+        await queryClient.refetchQueries({ queryKey: ['messages', data.conversation_id] });
+      }
+    },
+  });
+
+  // Mutation for text-only chat messages (new)
+  const chatMutation = useMutation({
+    mutationFn: async ({ message, mode, include_search, conversation_id }: ChatRequest) => {
+      const response = await api.post('/chat', {
+        message,
+        mode,
+        include_search,
+        conversation_id,
+      });
+      return response.data;
+    },
+    onSuccess: async (data) => {
+      await queryClient.refetchQueries({ queryKey: ['conversations'] });
+      if (data.conversation_id) {
+        await queryClient.refetchQueries({ queryKey: ['messages', data.conversation_id] });
       }
     },
   });
 
   return {
     processNotes: processMutation.mutateAsync,
-    isProcessing: processMutation.isPending,
-    error: processMutation.error,
+    sendMessage: chatMutation.mutateAsync,
+    isProcessing: processMutation.isPending || chatMutation.isPending,
+    error: processMutation.error || chatMutation.error,
   };
 }
 

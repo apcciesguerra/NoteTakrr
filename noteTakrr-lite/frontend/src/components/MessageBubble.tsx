@@ -1,7 +1,10 @@
 /**
- * MessageBubble component - Renders individual chat messages.
+ * MessageBubble component - Renders individual chat messages with
+ * proper Markdown formatting and authenticated DOCX downloads.
  */
 import { FileDown, Bot, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { api } from '../lib/api';
 
 interface MessageBubbleProps {
   id: string;
@@ -12,6 +15,31 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ id, role, content, hasDocx }: MessageBubbleProps) {
   const isAssistant = role === 'assistant';
+
+  const handleDownload = async () => {
+    try {
+      // Use the authenticated Axios instance so the Bearer token is attached
+      const response = await api.get(`/download/${id}`, {
+        responseType: 'blob', // Important: treat the response as binary
+      });
+
+      // Create a temporary download link from the blob
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `study_material_${id}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download document. Please try again.');
+    }
+  };
 
   return (
     <div className={`flex gap-4 w-full ${isAssistant ? '' : 'flex-row-reverse'} mb-8`}>
@@ -27,21 +55,34 @@ export default function MessageBubble({ id, role, content, hasDocx }: MessageBub
             ? 'bg-[#2D2D3F] text-gray-100 rounded-tl-none border border-[#3D3D53]' 
             : 'bg-purple-600 text-white rounded-tr-none shadow-lg shadow-purple-500/20'
         }`}>
-          <div className="prose prose-invert max-w-none text-[15px] leading-relaxed whitespace-pre-wrap font-sans">
-            {content}
-          </div>
+          {isAssistant ? (
+            <div className="prose prose-invert max-w-none text-[15px] leading-relaxed font-sans
+              prose-headings:text-purple-300 prose-headings:font-semibold prose-headings:mb-3 prose-headings:mt-4
+              prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
+              prose-p:mb-3 prose-p:text-gray-200
+              prose-strong:text-white prose-strong:font-semibold
+              prose-li:text-gray-200 prose-li:mb-1
+              prose-ul:my-2 prose-ol:my-2
+              prose-code:text-purple-300 prose-code:bg-[#1F1F2E] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+              prose-hr:border-[#3D3D53] prose-hr:my-4
+            ">
+              <ReactMarkdown>{content}</ReactMarkdown>
+            </div>
+          ) : (
+            <div className="text-[15px] leading-relaxed whitespace-pre-wrap font-sans">
+              {content.length > 200 ? content.substring(0, 200) + '...' : content}
+            </div>
+          )}
         </div>
         
         {hasDocx && isAssistant && (
-          <a 
-            href={`http://localhost:8000/api/download/${id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 flex items-center gap-2 px-4 py-2 bg-[#2D2D3F] hover:bg-[#3D3D53] border border-purple-500/30 text-purple-300 hover:text-purple-200 rounded-lg text-sm font-medium transition-all shadow-sm"
+          <button 
+            onClick={handleDownload}
+            className="mt-3 flex items-center gap-2 px-4 py-2 bg-[#2D2D3F] hover:bg-[#3D3D53] border border-purple-500/30 text-purple-300 hover:text-purple-200 rounded-lg text-sm font-medium transition-all shadow-sm cursor-pointer"
           >
             <FileDown className="w-4 h-4" />
             Download Study Document (DOCX)
-          </a>
+          </button>
         )}
       </div>
     </div>

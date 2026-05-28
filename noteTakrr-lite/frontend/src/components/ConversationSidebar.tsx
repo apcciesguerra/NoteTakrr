@@ -1,14 +1,23 @@
-import { MessageSquare, Plus, Menu } from 'lucide-react';
+import { MessageSquare, Plus, Menu, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface ConversationSidebarProps {
   conversations: any[];
   activeConversation: string | null;
   onSelect: (id: string | null) => void;
+  onDelete: (id: string) => void;
 }
 
-export default function ConversationSidebar({ conversations, activeConversation, onSelect }: ConversationSidebarProps) {
+export default function ConversationSidebar({ conversations, activeConversation, onSelect, onDelete }: ConversationSidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
+
+  const handleDelete = (e: React.MouseEvent, chatId: string) => {
+    // Stop the click from selecting the conversation
+    e.stopPropagation();
+    if (confirm('Delete this conversation? This cannot be undone.')) {
+      onDelete(chatId);
+    }
+  };
 
   if (!isOpen) {
     return (
@@ -50,18 +59,25 @@ export default function ConversationSidebar({ conversations, activeConversation,
           Recent Chats
         </div>
         {conversations.map((chat) => (
-          <button 
+          <div 
             key={chat.id}
-            onClick={() => onSelect(chat.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left group ${
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left group cursor-pointer ${
               activeConversation === chat.id 
                 ? 'bg-[#2D2D3F] text-white border border-[#3D3D53]' 
                 : 'hover:bg-[#2D2D3F]/50 text-gray-300 hover:text-white border border-transparent'
             }`}
+            onClick={() => onSelect(chat.id)}
           >
             <MessageSquare className={`w-4 h-4 shrink-0 ${activeConversation === chat.id ? 'text-purple-400' : 'text-gray-500 group-hover:text-purple-400'}`} />
-            <span className="truncate text-sm">{chat.title}</span>
-          </button>
+            <span className="truncate text-sm flex-1">{chat.title}</span>
+            <button
+              onClick={(e) => handleDelete(e, chat.id)}
+              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all"
+              title="Delete conversation"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         ))}
       </div>
     </div>

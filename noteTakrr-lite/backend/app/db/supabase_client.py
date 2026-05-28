@@ -127,3 +127,35 @@ def get_document(client: Client, message_id: str) -> Optional[Dict]:
     """Fetch a document by message_id."""
     result = client.table("generated_documents").select("*").eq("message_id", message_id).execute()
     return result.data[0] if result.data else None
+
+
+def delete_conversation(client: Client, conversation_id: str) -> bool:
+    """Delete a conversation and all related messages and documents.
+    
+    Deletion order matters due to foreign key constraints:
+    1. Delete generated_documents (references messages)
+    2. Delete messages (references conversations)
+    3. Delete the conversation itself
+    
+    Args:
+        client: The authenticated Supabase client.
+        conversation_id: UUID of the conversation to delete.
+        
+    Returns:
+        True if deletion was successful.
+    """
+    # First, get all message IDs for this conversation
+    messages = client.table("messages").select("id").eq("conversation_id", conversation_id).execute()
+    message_ids = [m["id"] for m in messages.data] if messages.data else []
+    
+    # Delete generated_documents for each message
+    for msg_id in message_ids:
+        client.table("generated_documents").delete().eq("message_id", msg_id).execute()
+    
+    # Delete all messages in the conversation
+    client.table("messages").delete().eq("conversation_id", conversation_id).execute()
+    
+    # Delete the conversation itself
+    client.table("conversations").delete().eq("id", conversation_id).execute()
+    
+    return True

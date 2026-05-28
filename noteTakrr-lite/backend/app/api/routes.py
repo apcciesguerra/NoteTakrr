@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import Response
-from typing import Optional
+from typing import Optional, List
 
 from app.agent import processor
 from app.agent import llm_chain
@@ -23,18 +23,18 @@ def get_token(request: Request) -> str:
 @router.post("/process")
 async def process_notes(
     request: Request,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     mode: str = Form("summary"),
     include_search: str = Form("false"),
     conversation_id: Optional[str] = Form(None),
 ):
-    """Handle file uploads, mode selection, and generate response + DOCX.
+    """Handle file uploads (1-10 files), mode selection, and generate response + DOCX.
     
     Args:
         request: The FastAPI Request object.
-        file: Uploaded file (text, image, or PDF).
+        files: List of uploaded files (text, image, or PDF). Max 10.
         mode: Processing mode - 'summary' or 'reviewer'.
-        include_search: Whether to ground the generation with Google Search.
+        include_search: Whether to ground the generation with web search.
         conversation_id: Optional existing conversation ID for context.
         
     Returns:
@@ -46,10 +46,19 @@ async def process_notes(
     # Parse include_search from string to bool (FormData sends strings)
     search_enabled = include_search.lower() in ("true", "1", "yes")
     
-    # 1. Extract text from uploaded file
-    extracted_text = await processor.process_file(file)
-    if not extracted_text:
-        raise HTTPException(status_code=400, detail="Could not extract text from file.")
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload.")
+    
+    # 1. Extract text from all uploaded files and combine them
+    all_texts = []
+    for i, file in enumerate(files):
+        text = await processor.process_file(file)
+        if text:
+            label = file.filename or f"File {i + 1}"
+            all_texts.append(f"--- {label} ---\n{text}")
+    
+    if not all_texts:
+        raise HTTPException(status_code=400, detail="Could not extract text from any of the uploaded files.")
         
     # 2. Fetch conversation history if conversation_id is provided
     history = []
@@ -107,6 +116,72 @@ async def process_notes(
     }
 
 
+@router.post("/chat")
+async def chat_message(
+    request: Request,
+):
+    """Handle text-only follow-up messages in an existing conversation.
+    
+    Accepts a JSON body with:
+        message: The user's text message.
+        conversation_id: UUID of the conversation (required for follow-ups, optional for new).
+        mode: Processing mode - 'summary' or 'reviewer'.
+        include_search: Whether to ground with web search.
+    """
+    token = get_token(request)
+    client = supabase_client.get_supabase_client(token)
+    
+    body = await request.json()
+    user_message = body.get("message", "").strip()
+    conversation_id = body.get("conversation_id")
+    mode = body.get("mode", "summary")
+    search_enabled = body.get("include_search", False)
+    
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    
+    # Fetch or create conversation
+    history = []
+    if conversation_id:
+        history = supabase_client.get_messages(client, conversation_id)
+    else:
+        title = user_message[:30].replace("\n", " ") + "..." if len(user_message) > 30 else user_message
+        conv = supabase_client.store_conversation(client, token, title)
+        conversation_id = conv.get("id")
+    
+    if not conversation_id:
+        raise HTTPException(status_code=500, detail="Failed to create or retrieve conversation.")
+    
+    # Save the user's message
+    supabase_client.store_message(
+        client, conversation_id, "user", user_message, mode, search_enabled
+    )
+    
+    # Call Z.ai with the full conversation history
+    try:
+        ai_response = await llm_chain.generate_chat_response(
+            user_message=user_message,
+            context=history,
+            include_search=search_enabled
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+    
+    # Save the assistant's reply
+    assistant_msg = supabase_client.store_message(
+        client, conversation_id, "assistant", ai_response, mode, search_enabled
+    )
+    message_id = assistant_msg.get("id")
+    
+    return {
+        "conversation_id": conversation_id,
+        "message_id": message_id,
+        "content": ai_response,
+        "mode": mode,
+        "has_docx": False
+    }
+
+
 @router.get("/conversations")
 async def get_conversations(request: Request):
     """Fetch user's chat history.
@@ -119,6 +194,27 @@ async def get_conversations(request: Request):
     
     conversations = supabase_client.get_conversations(client)
     return conversations
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(request: Request, conversation_id: str):
+    """Delete a conversation and all its messages and documents.
+    
+    Args:
+        request: The FastAPI Request object.
+        conversation_id: UUID of the conversation to delete.
+        
+    Returns:
+        Success confirmation.
+    """
+    token = get_token(request)
+    client = supabase_client.get_supabase_client(token)
+    
+    try:
+        supabase_client.delete_conversation(client, conversation_id)
+        return {"status": "ok", "deleted": conversation_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete conversation: {str(e)}")
 
 
 @router.get("/conversations/{conversation_id}/messages")
