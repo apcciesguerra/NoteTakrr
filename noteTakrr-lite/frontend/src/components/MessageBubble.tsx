@@ -4,12 +4,13 @@
 import { FileDown, Bot, User } from 'lucide-react';
 
 interface MessageBubbleProps {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   hasDocx?: boolean;
 }
 
-export default function MessageBubble({ role, content, hasDocx }: MessageBubbleProps) {
+export default function MessageBubble({ id, role, content, hasDocx }: MessageBubbleProps) {
   const isAssistant = role === 'assistant';
 
   return (
@@ -32,10 +33,15 @@ export default function MessageBubble({ role, content, hasDocx }: MessageBubbleP
         </div>
         
         {hasDocx && isAssistant && (
-          <button className="mt-3 flex items-center gap-2 px-4 py-2 bg-[#2D2D3F] hover:bg-[#3D3D53] border border-purple-500/30 text-purple-300 hover:text-purple-200 rounded-lg text-sm font-medium transition-all shadow-sm">
+          <a 
+            href={`http://localhost:8000/api/download/${id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center gap-2 px-4 py-2 bg-[#2D2D3F] hover:bg-[#3D3D53] border border-purple-500/30 text-purple-300 hover:text-purple-200 rounded-lg text-sm font-medium transition-all shadow-sm"
+          >
             <FileDown className="w-4 h-4" />
             Download Study Document (DOCX)
-          </button>
+          </a>
         )}
       </div>
     </div>

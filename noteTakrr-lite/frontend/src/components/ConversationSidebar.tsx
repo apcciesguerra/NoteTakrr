@@ -1,13 +1,13 @@
 import { MessageSquare, Plus, Menu } from 'lucide-react';
 import { useState } from 'react';
 
-const DUMMY_CHATS = [
-  { id: '1', title: 'Biology Chapter 4 Notes' },
-  { id: '2', title: 'Physics Kinematics' },
-  { id: '3', title: 'History Final Review' }
-];
+interface ConversationSidebarProps {
+  conversations: any[];
+  activeConversation: string | null;
+  onSelect: (id: string | null) => void;
+}
 
-export default function ConversationSidebar() {
+export default function ConversationSidebar({ conversations, activeConversation, onSelect }: ConversationSidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
 
   if (!isOpen) {
@@ -36,7 +36,10 @@ export default function ConversationSidebar() {
       </div>
 
       <div className="p-4">
-        <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors shadow-lg shadow-purple-500/20 font-medium">
+        <button 
+          onClick={() => onSelect(null)}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors shadow-lg shadow-purple-500/20 font-medium"
+        >
           <Plus className="w-4 h-4" />
           New Study Session
         </button>
@@ -46,12 +49,17 @@ export default function ConversationSidebar() {
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-2 mt-4">
           Recent Chats
         </div>
-        {DUMMY_CHATS.map((chat) => (
+        {conversations.map((chat) => (
           <button 
             key={chat.id}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#2D2D3F] text-gray-300 hover:text-white transition-colors text-left group"
+            onClick={() => onSelect(chat.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left group ${
+              activeConversation === chat.id 
+                ? 'bg-[#2D2D3F] text-white border border-[#3D3D53]' 
+                : 'hover:bg-[#2D2D3F]/50 text-gray-300 hover:text-white border border-transparent'
+            }`}
           >
-            <MessageSquare className="w-4 h-4 text-gray-500 group-hover:text-purple-400 shrink-0" />
+            <MessageSquare className={`w-4 h-4 shrink-0 ${activeConversation === chat.id ? 'text-purple-400' : 'text-gray-500 group-hover:text-purple-400'}`} />
             <span className="truncate text-sm">{chat.title}</span>
           </button>
         ))}

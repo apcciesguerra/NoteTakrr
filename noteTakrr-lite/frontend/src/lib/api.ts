@@ -1,20 +1,19 @@
-/**
- * API client for communicating with the NoteTakrr Lite backend.
- */
-
 import axios from 'axios';
+import { supabase } from './supabase';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+export const api = axios.create({
+  baseURL: 'http://localhost:8000/api',
 });
 
-// TODO: Add API methods:
-// - processNotes(file: File, mode: string, conversationId?: string)
-// - getConversations()
-// - getMessages(conversationId: string)
-// - downloadDocx(messageId: string)
+// Intercept requests to automatically attach the Supabase access token
+api.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
