@@ -1,10 +1,11 @@
 /**
- * ChatInput — ChatGPT-style input bar with text messaging and file staging.
+ * ChatInput — ChatGPT-style input bar with text messaging and multi-file staging.
  * 
  * Features:
  * - Text input that grows with content
- * - File attach button (drag & drop + click)
- * - Staged file preview with remove button
+ * - File attach button (supports multiple files, up to 10)
+ * - Drag & drop stages files (does NOT auto-send)
+ * - Staged file previews with individual remove buttons
  * - Send button (Enter to send, Shift+Enter for newline)
  */
 import { Send, Paperclip, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
@@ -12,18 +13,32 @@ import { useState, useRef, useEffect } from 'react';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
-  onSendFile: (file: File, message?: string) => void;
+  onSendFiles: (files: File[], message?: string) => void;
   isProcessing: boolean;
+  /** Allows parent to inject staged files (e.g., from the big upload zone) */
+  externalFiles?: File[];
+  onExternalFilesConsumed?: () => void;
 }
 
-export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: ChatInputProps) {
+export default function ChatInput({ onSendMessage, onSendFiles, isProcessing, externalFiles, onExternalFilesConsumed }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-resize textarea as content grows
+  // Pick up externally staged files (from the big upload zone drag & drop)
+  useEffect(() => {
+    if (externalFiles && externalFiles.length > 0) {
+      setStagedFiles(prev => {
+        const combined = [...prev, ...externalFiles].slice(0, 10);
+        return combined;
+      });
+      onExternalFilesConsumed?.();
+    }
+  }, [externalFiles, onExternalFilesConsumed]);
+
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -33,37 +48,41 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
 
   const handleSend = () => {
     if (isProcessing) return;
-    
     const trimmedMessage = message.trim();
 
-    if (stagedFile) {
-      // Send file (with optional message as context)
-      onSendFile(stagedFile, trimmedMessage || undefined);
-      setStagedFile(null);
+    if (stagedFiles.length > 0) {
+      onSendFiles(stagedFiles, trimmedMessage || undefined);
+      setStagedFiles([]);
       setMessage('');
     } else if (trimmedMessage) {
-      // Send text-only message
       onSendMessage(trimmedMessage);
       setMessage('');
     }
 
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Enter sends, Shift+Enter adds newline
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
+  const addFiles = (newFiles: FileList | File[]) => {
+    const fileArray = Array.from(newFiles);
+    setStagedFiles(prev => {
+      const combined = [...prev, ...fileArray].slice(0, 10); // max 10
+      return combined;
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setStagedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setStagedFile(file);
+    if (e.target.files) addFiles(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -81,13 +100,12 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
     e.preventDefault();
     setIsDragging(false);
     if (isProcessing) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) setStagedFile(file);
+    if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
   };
 
   const getFileIcon = (file: File) => {
-    if (file.type.startsWith('image/')) return <ImageIcon className="w-4 h-4" />;
-    return <FileText className="w-4 h-4" />;
+    if (file.type.startsWith('image/')) return <ImageIcon className="w-3.5 h-3.5" />;
+    return <FileText className="w-3.5 h-3.5" />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -96,14 +114,14 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const canSend = !isProcessing && (message.trim().length > 0 || stagedFile !== null);
+  const canSend = !isProcessing && (message.trim().length > 0 || stagedFiles.length > 0);
 
   return (
     <div
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-full transition-all ${isDragging ? 'ring-2 ring-purple-500 rounded-2xl' : ''}`}
+      className={`w-full transition-all relative ${isDragging ? 'ring-2 ring-purple-500 rounded-2xl' : ''}`}
     >
       <input 
         type="file" 
@@ -111,25 +129,34 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
         ref={fileInputRef}
         onChange={handleFileChange}
         accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+        multiple
       />
 
       <div className="bg-[#2D2D3F] border border-[#3D3D53] rounded-2xl shadow-lg shadow-black/20 overflow-hidden">
         
-        {/* Staged File Preview */}
-        {stagedFile && (
-          <div className="px-4 pt-3">
-            <div className="inline-flex items-center gap-2 px-3 py-2 bg-[#1F1F2E] border border-[#3D3D53] rounded-lg text-sm">
-              <span className="text-purple-400">{getFileIcon(stagedFile)}</span>
-              <span className="text-gray-200 max-w-[200px] truncate">{stagedFile.name}</span>
-              <span className="text-gray-500 text-xs">({formatFileSize(stagedFile.size)})</span>
-              <button
-                onClick={() => setStagedFile(null)}
-                className="ml-1 p-0.5 hover:bg-red-500/20 hover:text-red-400 rounded transition-colors text-gray-500"
-                title="Remove file"
+        {/* Staged Files Preview */}
+        {stagedFiles.length > 0 && (
+          <div className="px-4 pt-3 flex flex-wrap gap-2">
+            {stagedFiles.map((file, idx) => (
+              <div 
+                key={`${file.name}-${idx}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1F1F2E] border border-[#3D3D53] rounded-lg text-xs"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <span className="text-purple-400">{getFileIcon(file)}</span>
+                <span className="text-gray-200 max-w-[140px] truncate">{file.name}</span>
+                <span className="text-gray-500">({formatFileSize(file.size)})</span>
+                <button
+                  onClick={() => removeFile(idx)}
+                  className="p-0.5 hover:bg-red-500/20 hover:text-red-400 rounded transition-colors text-gray-500"
+                  title="Remove file"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            {stagedFiles.length >= 10 && (
+              <span className="text-xs text-yellow-400 self-center ml-1">Max 10 files</span>
+            )}
           </div>
         )}
 
@@ -138,9 +165,9 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
           {/* Attach Button */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={isProcessing}
+            disabled={isProcessing || stagedFiles.length >= 10}
             className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-purple-400 hover:bg-[#1F1F2E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Attach file"
+            title="Attach files (max 10)"
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -151,7 +178,10 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={stagedFile ? "Add a message (optional)..." : "Type a message or attach a file..."}
+            placeholder={stagedFiles.length > 0 
+              ? `${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''} attached — add a message or press Send`
+              : "Type a message or attach a file..."
+            }
             disabled={isProcessing}
             rows={1}
             className="flex-1 bg-transparent text-gray-100 placeholder-gray-500 resize-none outline-none text-[15px] leading-relaxed py-2 max-h-40 disabled:opacity-50"
@@ -176,10 +206,10 @@ export default function ChatInput({ onSendMessage, onSendFile, isProcessing }: C
         </div>
       </div>
 
-      {/* Drag overlay hint */}
+      {/* Drag overlay */}
       {isDragging && (
         <div className="absolute inset-0 bg-purple-600/10 border-2 border-dashed border-purple-500 rounded-2xl flex items-center justify-center z-10 pointer-events-none">
-          <span className="text-purple-300 font-medium text-lg">Drop your file here</span>
+          <span className="text-purple-300 font-medium text-lg">Drop files here (max 10)</span>
         </div>
       )}
     </div>

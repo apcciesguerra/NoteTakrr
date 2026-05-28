@@ -1,9 +1,11 @@
 /**
  * MessageBubble component - Renders individual chat messages with
- * proper Markdown formatting and authenticated DOCX downloads.
+ * proper Markdown formatting, math/formula rendering, and authenticated DOCX downloads.
  */
 import { FileDown, Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { api } from '../lib/api';
 
 interface MessageBubbleProps {
@@ -18,12 +20,10 @@ export default function MessageBubble({ id, role, content, hasDocx }: MessageBub
 
   const handleDownload = async () => {
     try {
-      // Use the authenticated Axios instance so the Bearer token is attached
       const response = await api.get(`/download/${id}`, {
-        responseType: 'blob', // Important: treat the response as binary
+        responseType: 'blob',
       });
 
-      // Create a temporary download link from the blob
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
@@ -66,7 +66,12 @@ export default function MessageBubble({ id, role, content, hasDocx }: MessageBub
               prose-code:text-purple-300 prose-code:bg-[#1F1F2E] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
               prose-hr:border-[#3D3D53] prose-hr:my-4
             ">
-              <ReactMarkdown>{content}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {content}
+              </ReactMarkdown>
             </div>
           ) : (
             <div className="text-[15px] leading-relaxed whitespace-pre-wrap font-sans">

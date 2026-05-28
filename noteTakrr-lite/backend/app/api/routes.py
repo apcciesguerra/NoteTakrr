@@ -1,7 +1,8 @@
 """FastAPI route definitions for NoteTakrr Lite API."""
 
+import json
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from typing import Optional, List
 
 from app.agent import processor
@@ -28,28 +29,15 @@ async def process_notes(
     include_search: str = Form("false"),
     conversation_id: Optional[str] = Form(None),
 ):
-    """Handle file uploads (1-10 files), mode selection, and generate response + DOCX.
-    
-    Args:
-        request: The FastAPI Request object.
-        files: List of uploaded files (text, image, or PDF). Max 10.
-        mode: Processing mode - 'summary' or 'reviewer'.
-        include_search: Whether to ground the generation with web search.
-        conversation_id: Optional existing conversation ID for context.
-        
-    Returns:
-        Generated response with conversation and message IDs.
-    """
+    """Stream AI response via SSE while processing uploaded files."""
     token = get_token(request)
     client = supabase_client.get_supabase_client(token)
-    
-    # Parse include_search from string to bool (FormData sends strings)
     search_enabled = include_search.lower() in ("true", "1", "yes")
     
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload.")
     
-    # 1. Extract text from all uploaded files and combine them
+    # Extract text from all files
     all_texts = []
     for i, file in enumerate(files):
         text = await processor.process_file(file)
@@ -59,61 +47,56 @@ async def process_notes(
     
     if not all_texts:
         raise HTTPException(status_code=400, detail="Could not extract text from any of the uploaded files.")
-        
-    # 2. Fetch conversation history if conversation_id is provided
+    
+    extracted_text = "\n\n".join(all_texts)
+    
+    # Create or fetch conversation
     history = []
     if conversation_id:
         history = supabase_client.get_messages(client, conversation_id)
     else:
-        # Create a new conversation
         title = extracted_text[:30].replace("\n", " ") + "..." if len(extracted_text) > 30 else "New Study Session"
         conv = supabase_client.store_conversation(client, token, title)
         conversation_id = conv.get("id")
-        
+    
     if not conversation_id:
         raise HTTPException(status_code=500, detail="Failed to create or retrieve conversation.")
+    
+    # Save user message
+    supabase_client.store_message(client, conversation_id, "user", extracted_text, mode, search_enabled)
+
+    async def event_stream():
+        """SSE generator: streams tokens then saves to DB when done."""
+        full_response = ""
         
-    # 3. Save the user's message to the database
-    supabase_client.store_message(
-        client, conversation_id, "user", extracted_text, mode, search_enabled
-    )
+        # Send conversation metadata first
+        yield f"data: {json.dumps({'type': 'meta', 'conversation_id': conversation_id})}\n\n"
         
-    # 4. Call Z.ai to get the response
-    try:
-        ai_response = await llm_chain.generate_study_material(
-            extracted_text=extracted_text,
-            mode=mode,
-            context=history,
-            include_search=search_enabled
+        try:
+            async for token_text in llm_chain.stream_study_material(
+                extracted_text=extracted_text, mode=mode, context=history, include_search=search_enabled
+            ):
+                full_response += token_text
+                yield f"data: {json.dumps({'type': 'token', 'content': token_text})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            return
+        
+        # Stream is done — save everything to DB
+        docx_bytes = docx_generator.create_study_document(content=full_response, mode=mode)
+        assistant_msg = supabase_client.store_message(
+            client, conversation_id, "assistant", full_response, mode, search_enabled
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
-    
-    # 5. Generate DOCX file bytes
-    docx_bytes = docx_generator.create_study_document(content=ai_response, mode=mode)
-    
-    # 6. Save the assistant's message to the database
-    assistant_msg = supabase_client.store_message(
-        client, conversation_id, "assistant", ai_response, mode, search_enabled
-    )
-    message_id = assistant_msg.get("id")
-    
-    if not message_id:
-        raise HTTPException(status_code=500, detail="Failed to save assistant message.")
+        message_id = assistant_msg.get("id", "")
         
-    # 7. Save the generated DOCX to the database
-    supabase_client.store_document(client, message_id, docx_bytes, mode)
-    
-    # Save a copy locally as a backup
-    docx_generator.save_docx_to_file(docx_bytes, f"{message_id}.docx")
-    
-    return {
-        "conversation_id": conversation_id,
-        "message_id": message_id,
-        "content": ai_response,
-        "mode": mode,
-        "has_docx": True
-    }
+        if message_id:
+            supabase_client.store_document(client, message_id, docx_bytes, mode)
+            docx_generator.save_docx_to_file(docx_bytes, f"{message_id}.docx")
+        
+        # Send final "done" event with metadata
+        yield f"data: {json.dumps({'type': 'done', 'message_id': message_id, 'has_docx': True})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/chat")
@@ -156,30 +139,31 @@ async def chat_message(
     supabase_client.store_message(
         client, conversation_id, "user", user_message, mode, search_enabled
     )
-    
-    # Call Z.ai with the full conversation history
-    try:
-        ai_response = await llm_chain.generate_chat_response(
-            user_message=user_message,
-            context=history,
-            include_search=search_enabled
+
+    async def event_stream():
+        full_response = ""
+        
+        yield f"data: {json.dumps({'type': 'meta', 'conversation_id': conversation_id})}\n\n"
+        
+        try:
+            async for token_text in llm_chain.stream_chat_response(
+                user_message=user_message, context=history, include_search=search_enabled
+            ):
+                full_response += token_text
+                yield f"data: {json.dumps({'type': 'token', 'content': token_text})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+            return
+        
+        # Save the assistant's reply
+        assistant_msg = supabase_client.store_message(
+            client, conversation_id, "assistant", full_response, mode, search_enabled
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
-    
-    # Save the assistant's reply
-    assistant_msg = supabase_client.store_message(
-        client, conversation_id, "assistant", ai_response, mode, search_enabled
-    )
-    message_id = assistant_msg.get("id")
-    
-    return {
-        "conversation_id": conversation_id,
-        "message_id": message_id,
-        "content": ai_response,
-        "mode": mode,
-        "has_docx": False
-    }
+        message_id = assistant_msg.get("id", "")
+        
+        yield f"data: {json.dumps({'type': 'done', 'message_id': message_id, 'has_docx': False})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/conversations")
