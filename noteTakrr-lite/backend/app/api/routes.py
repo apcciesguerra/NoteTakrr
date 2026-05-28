@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from typing import Optional
 
 from app.agent import processor
-from app.agent import gemini_chain
+from app.agent import llm_chain
 from app.agent import docx_generator
 from app.db import supabase_client
 
@@ -25,7 +25,7 @@ async def process_notes(
     request: Request,
     file: UploadFile = File(...),
     mode: str = Form("summary"),
-    include_search: bool = Form(False),
+    include_search: str = Form("false"),
     conversation_id: Optional[str] = Form(None),
 ):
     """Handle file uploads, mode selection, and generate response + DOCX.
@@ -43,6 +43,9 @@ async def process_notes(
     token = get_token(request)
     client = supabase_client.get_supabase_client(token)
     
+    # Parse include_search from string to bool (FormData sends strings)
+    search_enabled = include_search.lower() in ("true", "1", "yes")
+    
     # 1. Extract text from uploaded file
     extracted_text = await processor.process_file(file)
     if not extracted_text:
@@ -51,35 +54,38 @@ async def process_notes(
     # 2. Fetch conversation history if conversation_id is provided
     history = []
     if conversation_id:
-        history = await supabase_client.get_messages(client, conversation_id)
+        history = supabase_client.get_messages(client, conversation_id)
     else:
         # Create a new conversation
         title = extracted_text[:30].replace("\n", " ") + "..." if len(extracted_text) > 30 else "New Study Session"
-        conv = await supabase_client.store_conversation(client, token, title)
+        conv = supabase_client.store_conversation(client, token, title)
         conversation_id = conv.get("id")
         
     if not conversation_id:
         raise HTTPException(status_code=500, detail="Failed to create or retrieve conversation.")
         
     # 3. Save the user's message to the database
-    await supabase_client.store_message(
-        client, conversation_id, "user", extracted_text, mode, include_search
+    supabase_client.store_message(
+        client, conversation_id, "user", extracted_text, mode, search_enabled
     )
         
-    # 4. Call Gemini AI to get the response
-    ai_response = await gemini_chain.generate_response(
-        text=extracted_text,
-        mode=mode,
-        context=history,
-        include_search=include_search
-    )
+    # 4. Call Z.ai to get the response
+    try:
+        ai_response = await llm_chain.generate_study_material(
+            extracted_text=extracted_text,
+            mode=mode,
+            context=history,
+            include_search=search_enabled
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
     
     # 5. Generate DOCX file bytes
     docx_bytes = docx_generator.create_study_document(content=ai_response, mode=mode)
     
     # 6. Save the assistant's message to the database
-    assistant_msg = await supabase_client.store_message(
-        client, conversation_id, "assistant", ai_response, mode, include_search
+    assistant_msg = supabase_client.store_message(
+        client, conversation_id, "assistant", ai_response, mode, search_enabled
     )
     message_id = assistant_msg.get("id")
     
@@ -87,7 +93,7 @@ async def process_notes(
         raise HTTPException(status_code=500, detail="Failed to save assistant message.")
         
     # 7. Save the generated DOCX to the database
-    await supabase_client.store_document(client, message_id, docx_bytes, mode)
+    supabase_client.store_document(client, message_id, docx_bytes, mode)
     
     # Save a copy locally as a backup
     docx_generator.save_docx_to_file(docx_bytes, f"{message_id}.docx")
@@ -111,7 +117,7 @@ async def get_conversations(request: Request):
     token = get_token(request)
     client = supabase_client.get_supabase_client(token)
     
-    conversations = await supabase_client.get_conversations(client)
+    conversations = supabase_client.get_conversations(client)
     return conversations
 
 
@@ -129,7 +135,7 @@ async def get_conversation_messages(request: Request, conversation_id: str):
     token = get_token(request)
     client = supabase_client.get_supabase_client(token)
     
-    messages = await supabase_client.get_messages(client, conversation_id)
+    messages = supabase_client.get_messages(client, conversation_id)
     return messages
 
 
@@ -147,7 +153,7 @@ async def download_docx(request: Request, message_id: str):
     token = get_token(request)
     client = supabase_client.get_supabase_client(token)
     
-    doc_record = await supabase_client.get_document(client, message_id)
+    doc_record = supabase_client.get_document(client, message_id)
     if not doc_record or not doc_record.get("docx_blob"):
         raise HTTPException(status_code=404, detail="Document not found")
         

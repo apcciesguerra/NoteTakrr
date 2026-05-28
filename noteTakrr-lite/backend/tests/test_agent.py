@@ -10,7 +10,7 @@ def test_placeholder():
 
 # TODO: Add tests for:
 # - processor.process_upload()
-# - gemini_chain.generate_summary()
-# - gemini_chain.generate_review_questions()
+# - llm_chain.generate_summary()
+# - llm_chain.generate_review_questions()
 # - docx_generator.generate_docx()
 # - API endpoints
