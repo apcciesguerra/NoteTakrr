@@ -1,19 +1,25 @@
-import { UploadCloud, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
+/**
+ * FileUpload — Large drop zone for the empty/intro state.
+ * 
+ * Now stages files instead of auto-sending them.
+ * Files are passed to the parent which adds them to ChatInput's staged list.
+ */
+import { UploadCloud, FileText, Image as ImageIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFilesStaged: (files: File[]) => void;
   isProcessing: boolean;
 }
 
-export default function FileUpload({ onFileSelect, isProcessing }: FileUploadProps) {
+export default function FileUpload({ onFilesStaged, isProcessing }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && !isProcessing) {
-      onFileSelect(file);
+    const files = e.target.files;
+    if (files && files.length > 0 && !isProcessing) {
+      onFilesStaged(Array.from(files).slice(0, 10));
     }
     if (inputRef.current) inputRef.current.value = '';
   };
@@ -31,12 +37,11 @@ export default function FileUpload({ onFileSelect, isProcessing }: FileUploadPro
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
     if (isProcessing) return;
     
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      onFileSelect(file);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      onFilesStaged(Array.from(files).slice(0, 10));
     }
   };
 
@@ -48,7 +53,7 @@ export default function FileUpload({ onFileSelect, isProcessing }: FileUploadPro
         ref={inputRef}
         onChange={handleFileChange}
         accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
-        multiple={false}
+        multiple
       />
       
       <div 
@@ -66,18 +71,12 @@ export default function FileUpload({ onFileSelect, isProcessing }: FileUploadPro
       >
         <div className="flex justify-center mb-4">
           <div className={`p-4 rounded-full transition-all duration-300 ${isProcessing ? 'bg-[#2D2D3F]' : 'bg-[#2D2D3F] group-hover:bg-purple-600/20 group-hover:scale-110'}`}>
-            {isProcessing ? (
-              <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-            ) : (
-              <UploadCloud className="w-8 h-8 text-purple-400" />
-            )}
+            <UploadCloud className="w-8 h-8 text-purple-400" />
           </div>
         </div>
-        <h3 className="text-xl font-medium text-gray-200 mb-2">
-          {isProcessing ? 'Processing Notes...' : 'Upload Notes'}
-        </h3>
+        <h3 className="text-xl font-medium text-gray-200 mb-2">Upload Notes</h3>
         <p className="text-sm text-gray-400 mb-6">
-          {isProcessing ? 'NoteTakrr is working its magic.' : 'Drag & drop your files here, or click to browse'}
+          Drag & drop your files here, or click to browse (up to 10 files)
         </p>
         
         <div className="flex justify-center gap-6 text-xs font-medium text-gray-500">

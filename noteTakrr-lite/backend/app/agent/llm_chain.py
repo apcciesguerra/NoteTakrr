@@ -29,15 +29,30 @@ When you receive notes, follow this thinking process:
 3. Finally, produce a polished study guide.
 
 Your output MUST include:
-- A descriptive title for the study guide.
-- Clearly labeled sections with headings.
+- A descriptive title for the study guide (use # heading).
+- Clearly labeled sections with ## headings.
 - Key concepts explained in simple language.
-- Important definitions highlighted.
+- Important definitions highlighted with **bold**.
 - Relevant examples or analogies to aid understanding.
 - A brief summary at the end.
 
-Use Markdown formatting for readability.
-Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
+FORMATTING RULES (very important):
+- Use bullet points (- ) for lists of related concepts. Never write long unbroken paragraphs.
+- Keep paragraphs SHORT — 2-3 sentences max, then add a blank line.
+- Use blank lines between sections for breathing room.
+- Use **bold** for key terms and important vocabulary.
+- Use numbered lists (1. 2. 3.) for sequential steps or processes.
+- Use > blockquotes for important formulas or definitions.
+- Add a --- horizontal rule between major sections.
+- Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
+
+If web search context is provided alongside the notes, USE it to enrich your study guide with accurate, up-to-date information. You DO have access to web search results when they are provided.
+
+GUARDRAILS:
+- If the uploaded content appears to be blank, empty, or contains no meaningful study material (e.g., a random image of people, a blank page, or non-academic content), respond ONLY with:
+  "⚠️ **I couldn't find any study material in your upload.** Please upload notes, slides, textbook pages, or other academic content and I'll create a study guide for you."
+- Do NOT generate study material from non-academic content like casual photos, memes, or blank files.
+
 Be thorough but concise — a student should be able to review this before an exam."""
 
 REVIEWER_SYSTEM_PROMPT = """You are NoteTakrr, an expert AI study reviewer.
@@ -54,12 +69,32 @@ Your output MUST include:
 - For each question, provide a detailed answer with explanation.
 - Flag any concepts that the student's notes seem weak on.
 
-Format each Q&A pair like this:
-**Q1: [Question]**
-**A1:** [Detailed answer with explanation]
+FORMATTING RULES (very important):
+- Put a blank line between each Q&A pair.
+- Use **bold** for question numbers and key terms.
+- Break long answers into bullet points instead of long paragraphs.
+- Keep explanations digestible — 2-3 sentences per point, then a blank line.
+- Use > blockquotes for important formulas.
+- Add a --- horizontal rule between each Q&A pair.
+- Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
 
-Use Markdown formatting for readability.
-Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc²."""
+Format each Q&A pair like this:
+
+---
+
+**Q1: [Question]**
+
+**A1:**
+- [Key point 1]
+- [Key point 2]
+- [Explanation]
+
+If web search context is provided alongside the notes, USE it to create better, more accurate questions. You DO have access to web search results when they are provided.
+
+GUARDRAILS:
+- If the uploaded content appears to be blank, empty, or contains no meaningful study material (e.g., a random image of people, a blank page, or non-academic content), respond ONLY with:
+  "⚠️ **I couldn't find any study material in your upload.** Please upload notes, slides, textbook pages, or other academic content and I'll generate review questions for you."
+- Do NOT generate questions from non-academic content like casual photos, memes, or blank files."""
 
 
 # ──────────────────────────────────────────────
@@ -226,11 +261,26 @@ You can:
 - Generate additional practice questions
 - Explain difficult topics in simpler terms
 - Answer any study-related questions
+- Use web search results when they are provided to give accurate, up-to-date answers
 
-Always respond helpfully and in Markdown format.
-Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
+FORMATTING RULES (very important):
+- Use bullet points (- ) for lists. Never write long unbroken paragraphs.
+- Keep paragraphs SHORT — 2-3 sentences max.
+- Use **bold** for key terms.
+- Use blank lines between sections for breathing room.
+- Use > blockquotes for important formulas or definitions.
+- Avoid using LaTeX math notation (like $x$ or $$equation$$). Instead, write formulas in plain text, for example: F = ma, a = Δv / Δt, E = mc².
 
-IMPORTANT: At the end of every response, always ask the student:
+If web search context is provided alongside the student's question, USE it to give accurate answers. You DO have real-time web search access when results are included in the message. However, web search should ONLY be used to expand on topics from the student's uploaded notes — NOT for random unrelated queries.
+
+GUARDRAILS (very important):
+- You are ONLY a study assistant. You can ONLY help with topics related to the student's previously uploaded notes and study materials.
+- If the student asks something completely unrelated to their uploaded study material (e.g., "what is an apple", "tell me a joke", "what's the weather"), respond ONLY with:
+  "📚 **I'm NoteTakrr, your study assistant!** I can only help with your uploaded study materials. Try asking me to clarify a concept from your notes, generate more practice questions, or improve your summary."
+- Do NOT answer general knowledge questions, trivia, or anything outside the scope of the student's uploaded academic content.
+- If there is no conversation history (no previously uploaded notes), remind the student to upload their study materials first.
+
+IMPORTANT: At the end of every on-topic response, always ask the student:
 "**Would you like me to add this to the document?**"
 """
 
@@ -284,3 +334,85 @@ async def generate_chat_response(
         raise ValueError("Z.ai returned an empty response.")
         
     return response.choices[0].message.content
+
+
+# ──────────────────────────────────────────────
+# STREAMING VERSIONS (Server-Sent Events)
+# ──────────────────────────────────────────────
+
+async def _build_study_messages(extracted_text: str, mode: str, context, include_search: bool):
+    """Shared message-building logic for both streaming and non-streaming."""
+    if mode == "summary":
+        system_prompt = SUMMARY_SYSTEM_PROMPT
+    elif mode == "reviewer":
+        system_prompt = REVIEWER_SYSTEM_PROMPT
+    else:
+        raise ValueError(f"Invalid mode '{mode}'. Must be 'summary' or 'reviewer'.")
+
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    if context:
+        for msg in context:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
+    final_prompt = f"Please process the following notes:\n\n{extracted_text}"
+
+    if include_search:
+        short_query = extracted_text[:100].replace('\n', ' ').strip()
+        search_context = await _get_search_context(f"Key concepts: {short_query}")
+        final_prompt += f"\n\nHere is some additional live web context to help you:\n{search_context}"
+
+    messages.append({"role": "user", "content": final_prompt})
+    return messages
+
+
+async def _build_chat_messages(user_message: str, context, include_search: bool):
+    """Shared message-building logic for chat follow-ups."""
+    messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+    
+    if context:
+        for msg in context:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
+    final_prompt = user_message
+    if include_search:
+        short_query = user_message[:100].replace('\n', ' ').strip()
+        search_context = await _get_search_context(short_query)
+        final_prompt += f"\n\nHere is some additional live web context:\n{search_context}"
+
+    messages.append({"role": "user", "content": final_prompt})
+    return messages
+
+
+async def stream_study_material(extracted_text: str, mode: str, context=None, include_search: bool = False):
+    """Async generator that yields tokens as they arrive from Z.ai."""
+    messages = await _build_study_messages(extracted_text, mode, context, include_search)
+    client = get_llm_client()
+
+    stream = await client.chat.completions.create(
+        model="glm-4.7-flash",
+        messages=messages,
+        temperature=0.7,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+async def stream_chat_response(user_message: str, context=None, include_search: bool = False):
+    """Async generator that yields tokens as they arrive from Z.ai."""
+    messages = await _build_chat_messages(user_message, context, include_search)
+    client = get_llm_client()
+
+    stream = await client.chat.completions.create(
+        model="glm-4.7-flash",
+        messages=messages,
+        temperature=0.7,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
