@@ -4,7 +4,7 @@ import ModeSelector from './ModeSelector';
 import FileUpload from './FileUpload';
 import ChatInput from './ChatInput';
 import MessageBubble from './MessageBubble';
-import { Bot } from 'lucide-react';
+import { Bot, Menu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -21,6 +21,7 @@ export default function ChatWindow() {
   const [includeSearch, setIncludeSearch] = useState(false);
   const [externalFiles, setExternalFiles] = useState<File[]>([]);
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -110,13 +111,25 @@ export default function ChatWindow() {
         activeConversation={activeConversation} 
         onSelect={selectConversation} 
         onDelete={deleteConversation}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
       />
       
       <main className="flex-1 flex flex-col min-w-0 bg-[#1F1F2E] relative">
         <header className="h-16 border-b border-[#2D2D3F] flex items-center justify-between px-6 bg-[#1F1F2E]/80 backdrop-blur-md sticky top-0 z-10">
-          <h2 className="text-lg font-medium text-gray-200 truncate">
-            {activeConvData ? activeConvData.title : 'New Study Session'}
-          </h2>
+          <div className="flex items-center gap-4">
+            {!isSidebarOpen && (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-1.5 bg-[#2D2D3F] hover:bg-[#3D3D53] rounded-lg transition-colors text-gray-300 hover:text-white"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+            <h2 className="text-lg font-medium text-gray-200 truncate">
+              {activeConvData ? activeConvData.title : 'New Study Session'}
+            </h2>
+          </div>
           <ModeSelector 
             mode={mode} 
             setMode={setMode} 

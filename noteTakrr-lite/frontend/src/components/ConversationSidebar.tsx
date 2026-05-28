@@ -6,11 +6,18 @@ interface ConversationSidebarProps {
   activeConversation: string | null;
   onSelect: (id: string | null) => void;
   onDelete: (id: string) => void;
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
 }
 
-export default function ConversationSidebar({ conversations, activeConversation, onSelect, onDelete }: ConversationSidebarProps) {
-  const [isOpen, setIsOpen] = useState(true);
-
+export default function ConversationSidebar({ 
+  conversations, 
+  activeConversation, 
+  onSelect, 
+  onDelete,
+  isOpen,
+  setIsOpen
+}: ConversationSidebarProps) {
   const handleDelete = (e: React.MouseEvent, chatId: string) => {
     // Stop the click from selecting the conversation
     e.stopPropagation();
@@ -19,16 +26,7 @@ export default function ConversationSidebar({ conversations, activeConversation,
     }
   };
 
-  if (!isOpen) {
-    return (
-      <button 
-        onClick={() => setIsOpen(true)}
-        className="absolute top-4 left-4 p-2 bg-[#2D2D3F] hover:bg-[#3D3D53] rounded-lg transition-colors z-20 text-gray-300 hover:text-white"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
-    );
-  }
+  if (!isOpen) return null;
 
   return (
     <div className="w-72 bg-[#181824] h-full flex flex-col border-r border-[#2D2D3F] transition-all duration-300 relative">
