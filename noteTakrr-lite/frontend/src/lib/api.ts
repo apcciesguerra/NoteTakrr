@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 
 export const api = axios.create({
   baseURL: 'http://localhost:8000/api',
+  timeout: 120000, // 120 seconds — Gemini can take a while for long notes
 });
 
 // Intercept requests to automatically attach the Supabase access token

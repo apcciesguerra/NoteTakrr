@@ -30,7 +30,7 @@ def get_supabase_client(token: Optional[str] = None) -> Client:
     return client
 
 
-async def store_conversation(client: Client, token: str, title: str) -> dict:
+def store_conversation(client: Client, token: str, title: str) -> dict:
     """Create a new conversation record in Supabase.
     
     Args:
@@ -50,7 +50,7 @@ async def store_conversation(client: Client, token: str, title: str) -> dict:
     return result.data[0] if result.data else {}
 
 
-async def store_message(
+def store_message(
     client: Client, 
     conversation_id: str, 
     role: str, 
@@ -82,7 +82,7 @@ async def store_message(
     return result.data[0] if result.data else {}
 
 
-async def store_document(
+def store_document(
     client: Client,
     message_id: str,
     docx_bytes: bytes,
@@ -111,19 +111,19 @@ async def store_document(
     return result.data[0] if result.data else {}
 
 
-async def get_conversations(client: Client) -> List[Dict]:
+def get_conversations(client: Client) -> List[Dict]:
     """Fetch all conversations for the authenticated user."""
     result = client.table("conversations").select("*").order("updated_at", desc=True).execute()
     return result.data
 
 
-async def get_messages(client: Client, conversation_id: str) -> List[Dict]:
+def get_messages(client: Client, conversation_id: str) -> List[Dict]:
     """Fetch all messages for a conversation."""
     result = client.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at").execute()
     return result.data
 
 
-async def get_document(client: Client, message_id: str) -> Optional[Dict]:
+def get_document(client: Client, message_id: str) -> Optional[Dict]:
     """Fetch a document by message_id."""
     result = client.table("generated_documents").select("*").eq("message_id", message_id).execute()
     return result.data[0] if result.data else None

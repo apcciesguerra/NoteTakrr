@@ -1,5 +1,5 @@
 import { UploadCloud, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -8,14 +8,36 @@ interface FileUploadProps {
 
 export default function FileUpload({ onFileSelect, isProcessing }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && !isProcessing) {
       onFileSelect(file);
     }
-    // Reset input
     if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isProcessing) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (isProcessing) return;
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      onFileSelect(file);
+    }
   };
 
   return (
@@ -26,14 +48,20 @@ export default function FileUpload({ onFileSelect, isProcessing }: FileUploadPro
         ref={inputRef}
         onChange={handleFileChange}
         accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+        multiple={false}
       />
       
       <div 
         onClick={() => !isProcessing && inputRef.current?.click()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all ${
           isProcessing 
             ? 'border-[#3D3D53] bg-[#181824]/50 opacity-50 cursor-not-allowed'
-            : 'border-[#4D4D66] bg-[#181824]/50 hover:bg-[#2D2D3F]/80 cursor-pointer group hover:border-purple-500/50'
+            : isDragging 
+              ? 'border-purple-500 bg-[#2D2D3F]/80 cursor-pointer group scale-[1.02]' 
+              : 'border-[#4D4D66] bg-[#181824]/50 hover:bg-[#2D2D3F]/80 cursor-pointer group hover:border-purple-500/50'
         }`}
       >
         <div className="flex justify-center mb-4">

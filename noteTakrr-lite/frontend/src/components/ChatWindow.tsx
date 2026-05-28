@@ -38,9 +38,14 @@ export default function ChatWindow() {
       if (!activeConversation && result.conversation_id) {
         selectConversation(result.conversation_id);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Log full error details to the browser console for debugging
       console.error("Failed to process notes:", error);
-      alert("There was an error processing your notes. Please try again.");
+      console.error("Response data:", error?.response?.data);
+      console.error("Response status:", error?.response?.status);
+      
+      const detail = error?.response?.data?.detail || error?.message || "Unknown error";
+      alert(`Error: ${detail}`);
     }
   };
 
