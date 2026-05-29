@@ -74,7 +74,6 @@ NoteTakrr Lite uses a decoupled client-server architecture designed for real-tim
 
 - Python 3.11+
 - Node.js 18+
-- Tesseract OCR installed on your system
 - Poppler (for pdf2image)
 
 ### Backend Setup
