@@ -1,7 +1,8 @@
 """Document processor for text extraction from uploaded files.
 
 Supports: .txt, .pdf, .docx, and image files (.png, .jpg, .jpeg).
-Uses pure-Python libraries so no external system tools (like Poppler) are needed.
+Uses pure-Python libraries so no external system tools are needed.
+Images are processed by EasyOCR for text extraction.
 """
 
 import io
@@ -12,7 +13,6 @@ from fastapi import UploadFile, HTTPException
 from PyPDF2 import PdfReader
 
 # python-docx — extract text from .docx Word documents
-# (already installed since we use it for DOCX generation)
 from docx import Document
 
 
@@ -91,12 +91,12 @@ async def extract_text_from_docx(docx_bytes: bytes) -> str:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to process DOCX: {str(e)}")
 
-
 async def extract_text_from_image(image_bytes: bytes) -> str:
-    """Extract text from an image using Pytesseract OCR.
+    """Extract text from an image using EasyOCR.
     
-    Note: Requires Tesseract OCR to be installed on the system.
-    If not available, returns a helpful error message.
+    EasyOCR is a self-contained Python OCR library — no external tools
+    like Tesseract or Poppler needed. It handles printed text well and
+    has decent handwriting support.
     
     Args:
         image_bytes: Raw bytes of the image file.
@@ -105,19 +105,31 @@ async def extract_text_from_image(image_bytes: bytes) -> str:
         Extracted text string.
     """
     try:
+        import easyocr
+        import numpy as np
         from PIL import Image
-        import pytesseract
         
-        # Load the image from bytes using PIL
-        image = Image.open(io.BytesIO(image_bytes))
-        # Use Tesseract OCR to extract text from the image
-        text = pytesseract.image_to_string(image)
-        return text.strip()
-    except ImportError:
-        raise HTTPException(
-            status_code=400,
-            detail="Image OCR requires Tesseract to be installed. Please upload a PDF or DOCX instead."
-        )
+        # Load and convert image to numpy array for EasyOCR
+        img = Image.open(io.BytesIO(image_bytes))
+        img_array = np.array(img)
+        
+        # Initialize EasyOCR reader (English by default, cached after first run)
+        reader = easyocr.Reader(['en'], gpu=False)
+        
+        # Run OCR on the image
+        results = reader.readtext(img_array, detail=0, paragraph=True)
+        
+        text = "\n".join(results).strip()
+        
+        if not text:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not find any readable text in this image. Please upload a clearer image of your notes."
+            )
+        
+        return text
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to process image: {str(e)}")
 

@@ -168,8 +168,8 @@ export default function ChatWindow() {
                     How can I help you study?
                   </h1>
                   <p className="text-gray-400 max-w-lg">
-                    Upload your notes, images, text files, — or just ask a
-                    question. Drag & drop up to 10 files at once!
+                    Upload your notes, images, text files, or just ask a
+                    question. Drag & drop up some files!
                   </p>
                 </div>
                 <div className="max-w-2xl mx-auto">
