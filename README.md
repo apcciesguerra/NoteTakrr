@@ -15,10 +15,10 @@ NoteTakrr Lite is a web application that processes student notes (text, images, 
 |-------|-----------|
 | Frontend | React + TypeScript + Vite + TailwindCSS |
 | Backend | FastAPI (Python 3.11+) |
-| LLM | Gemini 3.1 Flash via google-generativeai |
-| RAG/Search | LangChain + DuckDuckGo |
+| LLM | Z.ai GLM-4.7-Flash via OpenAI SDK |
+| RAG/Search | DuckDuckGo Search (duckduckgo-search) |
 | Database | Supabase (PostgreSQL) |
-| Document Processing | Pytesseract, pdf2image, python-docx |
+| Document Processing | Unstructured, PyMuPDF, python-docx |
 
 ## Project Structure
 
@@ -41,6 +41,32 @@ noteTakrr-lite/
     │   └── styles/      # Additional styles
     └── public/          # Static assets
 ```
+
+## Libraries Used
+
+### Backend (Python)
+- **FastAPI** & **Uvicorn**: High-performance asynchronous web framework for the API.
+- **OpenAI SDK**: Used to connect to the Z.ai API (`GLM-4.7-Flash`).
+- **Supabase**: Database and authentication client.
+- **Unstructured** / **PyMuPDF (fitz)** / **Pillow**: Document extraction and OCR for PDFs, DOCX, and images.
+- **python-docx**: Generates downloadable study guides as Microsoft Word documents.
+- **duckduckgo-search**: Real-time web search for grounding AI responses.
+
+### Frontend (TypeScript / React)
+- **React** & **Vite**: UI library and fast build tool.
+- **Tailwind CSS** & **Lucide React**: Utility-first styling and beautiful iconography.
+- **TanStack Query (React Query)**: Data fetching, caching, and state synchronization.
+- **React Markdown**, **remark-math**, & **rehype-katex**: Renders the AI's markdown responses and complex math formulas (LaTeX) cleanly.
+- **Axios**: HTTP client for standard API requests (SSE streams use the native `fetch` API).
+
+## System Architecture
+
+NoteTakrr Lite uses a decoupled client-server architecture designed for real-time interaction and heavy document processing:
+
+- **Frontend**: A React Single Page Application (SPA) built with Vite, TypeScript, and Tailwind CSS. It uses TanStack Query for state management and Server-Sent Events (SSE) to stream AI responses in real-time, providing a chat-like experience.
+- **Backend**: A FastAPI Python server handling document extraction (PDF, DOCX, Images), AI orchestration, and study document generation. It provides RESTful endpoints and SSE streams.
+- **Database & Auth**: Supabase (PostgreSQL) is used for user authentication, conversation history, and storing generated study guides.
+- **AI Engine**: Powered by **Z.ai's `GLM-4.7-Flash` model**. The backend interfaces with Z.ai using the standard OpenAI SDK (since Z.ai provides an OpenAI-compatible API), offering fast, intelligent summarization and targeted review question generation. Web search context is fetched to provide up-to-date information when needed.
 
 ## Getting Started
 
@@ -81,6 +107,7 @@ cp .env.example .env
 
 npm run dev
 # App starts at http://localhost:5173
+
 ```
 
 ## API Endpoints
@@ -99,7 +126,7 @@ npm run dev
 
 | Variable | Description |
 |----------|-------------|
-| `GOOGLE_API_KEY` | Gemini API key |
+| `ZAI_API_KEY` | Z.ai API key for GLM-4.7-Flash |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_KEY` | Supabase anon/public key |
 | `ALLOWED_ORIGINS` | CORS allowed origins |
