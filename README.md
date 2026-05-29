@@ -18,7 +18,7 @@ NoteTakrr Lite is a web application that processes student notes (text, images, 
 | LLM | Z.ai GLM-4.7-Flash via OpenAI SDK |
 | RAG/Search | DuckDuckGo Search (duckduckgo-search) |
 | Database | Supabase (PostgreSQL) |
-| Document Processing | Unstructured, PyMuPDF, python-docx |
+| Document Processing | PyPDF2, EasyOCR, Pillow, python-docx |
 
 ## Project Structure
 
@@ -46,9 +46,11 @@ noteTakrr-lite/
 
 ### Backend (Python)
 - **FastAPI** & **Uvicorn**: High-performance asynchronous web framework for the API.
-- **OpenAI SDK**: Used to connect to the Z.ai API (`GLM-4.7-Flash`).
+- **OpenAI SDK**: Used to connect to the Z.ai API (`GLM-4.7-Flash`) for text generation.
 - **Supabase**: Database and authentication client.
-- **Unstructured** / **PyMuPDF (fitz)** / **Pillow**: Document extraction and OCR for PDFs, DOCX, and images.
+- **PyPDF2**: Pure-Python PDF text extraction (no external tools like Poppler needed).
+- **EasyOCR**: Self-contained OCR library for extracting text from images (no Tesseract required).
+- **Pillow**: Image processing and validation.
 - **python-docx**: Generates downloadable study guides as Microsoft Word documents.
 - **duckduckgo-search**: Real-time web search for grounding AI responses.
 
@@ -74,8 +76,6 @@ NoteTakrr Lite uses a decoupled client-server architecture designed for real-tim
 
 - Python 3.11+
 - Node.js 18+
-- Tesseract OCR installed on your system
-- Poppler (for pdf2image)
 
 ### Backend Setup
 
