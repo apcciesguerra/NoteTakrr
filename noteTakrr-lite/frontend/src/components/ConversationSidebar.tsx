@@ -1,5 +1,4 @@
 import { MessageSquare, Plus, Menu, Trash2 } from 'lucide-react';
-import { useState } from 'react';
 
 interface ConversationSidebarProps {
   conversations: any[];
